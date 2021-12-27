@@ -10,6 +10,8 @@
         android:id="@+id/task"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:textColor="#000"
+        android:textSize="35dp"
         tools:text="hello"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
