@@ -10,10 +10,18 @@ import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.room.Room
 import com.dlucci.myapplication.databinding.ActivityMainBinding
 import com.dlucci.myapplication.databinding.AddTaskDialogFragmentBinding
+import io.reactivex.Observable
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.disposables.Disposable
+import io.reactivex.internal.disposables.ArrayCompositeDisposable
+import io.reactivex.schedulers.Schedulers
 
 class MainActivity : AppCompatActivity() {
 
@@ -21,33 +29,58 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var adapter : TaskAdapter
 
+    private lateinit var db : RoomDbWrapper
+
+    private lateinit var compositeDisposable: CompositeDisposable
+
+    private lateinit var disposable : Disposable
 
     //store this in a list in the short term until the DB is set up
-    private var list = mutableListOf<String>()
+    private var list = mutableListOf<Task>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        initVariables()
+        binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        initVariables()
         initListeners()
     }
 
     fun initVariables() {
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        adapter = TaskAdapter(list)
-        binding.recycler.layoutManager = LinearLayoutManager(this)
-        binding.recycler.adapter = adapter
+        db = Room.databaseBuilder(this, RoomDbWrapper::class.java, "database").build()
+        compositeDisposable = CompositeDisposable()
+        populateRecyclerView()
+    }
+
+    private fun populateRecyclerView() {
+
+        disposable = db.roomDao()
+            .selectAll()
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe {
+                list = it?.toMutableList() ?: mutableListOf()
+                adapter = TaskAdapter(list)
+                binding.recycler.layoutManager = LinearLayoutManager(this)
+                binding.recycler.adapter = adapter
+            }
+
+        compositeDisposable.add(disposable)
     }
 
     fun initListeners() {
         binding.fab.setOnClickListener { view ->
-            //var dialog = AddTaskDialog(this)
             val dialogBinding = AddTaskDialogFragmentBinding.inflate(layoutInflater)
             val dialog = AlertDialog.Builder(this)
             dialog.setTitle("New Task")
             dialog.setView(dialogBinding.root)
             dialog.setPositiveButton("ok"
-            ) { dialog, which -> addToList(dialogBinding.task.text.toString()) }
+            ) { _, which -> addToList(dialogBinding.task.text.toString()) }
             dialog.setNegativeButton("cancel"
             ) { dialog, which -> dialog?.dismiss() }
             dialog.create().show()
@@ -56,11 +89,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addToList(task: String?) {
-        if(task?.isEmpty() ?: true) {
+        if(task?.isEmpty() != false) {
             return
         }
 
-        list.add(task ?: "")
-        adapter.notifyDataSetChanged()
+        db.roomDao().insert(Task(task))
+            .subscribeOn(Schedulers.io())
+            .doOnSubscribe { disposable -> compositeDisposable.add(disposable) }
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe()
+
     }
 }
